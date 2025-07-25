@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Busca de Documentos</title>
+    <!-- Inclui Tailwind CSS para estilização -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define a fonte Inter para todo o corpo, com fallback */
+        body {
+            font-family: "Inter", sans-serif;
+            background-color: #f3f4f6; /* Cor de fundo suave */
+        }
+        /* Estilos para o spinner de carregamento */
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3b82f6; /* Cor do spinner */
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-8 px-4">
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-3xl">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Busca de Documentos</h1>
+
+        <div class="flex flex-col sm:flex-row gap-4 mb-6">
+            <input
+                type="text"
+                id="search-input"
+                placeholder="Digite sua palavra-chave (ex: Mamografia)"
+                class="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
+            />
+            <button
+                id="search-button"
+                class="bg-blue-600 text-white px-6 py-3 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-200 flex items-center justify-center"
+            >
+                <span id="button-text">Buscar</span>
+                <div id="loading-spinner" class="spinner ml-2 hidden"></div>
+            </button>
+        </div>
+
+        <div id="results-container" class="space-y-6">
+            <!-- Os resultados da busca serão inseridos aqui -->
+            <p id="no-results-message" class="text-gray-600 text-center hidden">Nenhum resultado encontrado.</p>
+        </div>
+
+        <!-- Modal para mensagens de erro/informação -->
+        <div id="message-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+                <h3 id="modal-title" class="text-xl font-semibold mb-4"></h3>
+                <p id="modal-message" class="text-gray-700 mb-6"></p>
+                <button id="modal-close-button" class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition duration-200">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Obtém referências aos elementos do DOM
+        const searchInput = document.getElementById('search-input');
+        const searchButton = document.getElementById('search-button');
+        const buttonText = document.getElementById('button-text');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const resultsContainer = document.getElementById('results-container');
+        const noResultsMessage = document.getElementById('no-results-message');
+        const messageModal = document.getElementById('message-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalCloseButton = document.getElementById('modal-close-button');
+
+        // URL da sua API FastAPI (certifique-se de que está rodando em http://127.0.0.1:8000)
+        const API_URL = 'http://127.0.0.1:8000/search';
+
+        // Função para exibir o modal de mensagem
+        function showMessageModal(title, message) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            messageModal.classList.remove('hidden');
+        }
+
+        // Função para esconder o modal de mensagem
+        function hideMessageModal() {
+            messageModal.classList.add('hidden');
+        }
+
+        // Adiciona evento de clique ao botão de fechar do modal
+        modalCloseButton.addEventListener('click', hideMessageModal);
+
+        // Adiciona evento de clique ao botão de busca
+        searchButton.addEventListener('click', async () => {
+            const query = searchInput.value.trim(); // Obtém o valor do input e remove espaços em branco
+
+            if (!query) {
+                showMessageModal("Aviso", "Por favor, digite uma palavra-chave para buscar.");
+                return; // Sai da função se a busca estiver vazia
+            }
+
+            // Limpa os resultados anteriores e esconde a mensagem de "nenhum resultado"
+            resultsContainer.innerHTML = '';
+            noResultsMessage.classList.add('hidden');
+
+            // Mostra o spinner de carregamento e desabilita o botão
+            buttonText.classList.add('hidden');
+            loadingSpinner.classList.remove('hidden');
+            searchButton.disabled = true;
+
+            try {
+                // Faz a requisição POST para a API
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query: query })
+                });
+
+                // Verifica se a resposta da API foi bem-sucedida
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Erro ao buscar documentos.');
+                }
+
+                const data = await response.json(); // Converte a resposta para JSON
+
+                if (data.length === 0) {
+                    noResultsMessage.classList.remove('hidden'); // Mostra a mensagem de "nenhum resultado"
+                } else {
+                    // Para cada resultado, cria um elemento HTML e o adiciona ao container
+                    data.forEach(item => {
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = 'bg-gray-50 p-5 rounded-lg border border-gray-200 shadow-sm';
+                        resultDiv.innerHTML = `
+                            <h2 class="text-xl font-semibold text-gray-800 mb-2">${item.filename}</h2>
+                            <pre class="whitespace-pre-wrap text-gray-700 text-sm leading-relaxed">${item.snippet}</pre>
+                        `;
+                        resultsContainer.appendChild(resultDiv);
+                    });
+                }
+            } catch (error) {
+                console.error('Erro na busca:', error);
+                showMessageModal("Erro na Busca", `Ocorreu um erro ao realizar a busca: ${error.message}. Por favor, tente novamente.`);
+            } finally {
+                // Esconde o spinner e reabilita o botão
+                buttonText.classList.remove('hidden');
+                loadingSpinner.classList.add('hidden');
+                searchButton.disabled = false;
+            }
+        });
+
+        // Permite buscar ao pressionar Enter no campo de input
+        searchInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                searchButton.click();
+            }
+        });
+    </script>
+</body>
+</html>
